@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Product Inventory</title>
+<style>
+:root{box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px);
+--bg:#f5f6f8;--card:#fff;--text:#1d2330;--muted:#6b7280;--line:#d9dde4;--accent:#2457d6;--head:#1d2330;--headtext:#fff;--stripe:#f1f3f7;--danger:#b42318;--ok:#0f7a4d}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#12151c;--card:#1b2029;--text:#e7eaf0;--muted:#98a2b3;--line:#2c3340;--accent:#6c93ff;--head:#0c0f14;--headtext:#e7eaf0;--stripe:#202632;--danger:#ff8a80;--ok:#5ad19a}}
+:root[data-theme="dark"]{--bg:#12151c;--card:#1b2029;--text:#e7eaf0;--muted:#98a2b3;--line:#2c3340;--accent:#6c93ff;--head:#0c0f14;--headtext:#e7eaf0;--stripe:#202632;--danger:#ff8a80;--ok:#5ad19a}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+*,*::before,*::after{box-sizing:inherit}
+body{margin:0;background:var(--bg);color:var(--text);font:16px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+.wrap{max-width:1000px;margin:0 auto;padding:32px 16px}
+h1{margin:0 0 20px;font-size:clamp(1.6rem,1.2rem + 2vw,2.2rem)}
+h2{margin:0 0 14px;font-size:1.1rem}
+.card{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:20px;margin-bottom:20px}
+form{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:14px;align-items:end}
+label{display:block;font-size:.9rem;margin-bottom:4px}
+input{width:100%;padding:8px 10px;font:inherit;color:var(--text);background:var(--card);border:1px solid var(--line);border-radius:6px}
+input:focus-visible,button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+button{font:inherit;padding:8px 14px;border-radius:6px;border:1px solid var(--accent);background:var(--accent);color:#fff;cursor:pointer}
+button.ghost{background:transparent;color:var(--accent)}
+button.danger{background:transparent;color:var(--danger);border-color:var(--danger)}
+.msg{margin-bottom:12px;padding:8px 12px;border-radius:6px;font-size:.92rem}
+.msg.err{background:color-mix(in srgb,var(--danger) 14%,transparent);color:var(--danger)}
+.msg.ok{background:color-mix(in srgb,var(--ok) 14%,transparent);color:var(--ok)}
+.scroll{overflow-x:auto}
+table{width:100%;border-collapse:collapse;min-width:720px}
+th,td{padding:10px 12px;border:1px solid var(--line);text-align:left;vertical-align:middle}
+thead th{background:var(--head);color:var(--headtext)}
+tbody tr:nth-child(even){background:var(--stripe)}
+tfoot th{text-align:right}tfoot th:nth-child(2){text-align:left}
+td.actions{white-space:nowrap}td.actions button{margin-right:6px;padding:4px 10px}
+.empty{text-align:center;color:var(--muted)}
+.note{font-size:.85rem;color:var(--muted);margin-top:14px}
+</style>
+</head>
+<body>
+<div class="wrap">
+<h1>Product Inventory</h1>
+
+<div class="card">
+<h2>Add product</h2>
+<div id="formAlert" role="status"></div>
+<form id="productForm" autocomplete="off">
+<div><label for="name">Product name</label><input id="name" required></div>
+<div><label for="qty">Quantity in stock</label><input id="qty" type="number" min="0" step="1" required></div>
+<div><label for="price">Price per item</label><input id="price" type="number" min="0" step="0.01" required></div>
+<div><button type="submit">Add</button></div>
+</form>
+</div>
+
+<div class="card">
+<h2>Submitted products</h2>
+<div class="scroll">
+<table>
+<thead><tr><th>Product name</th><th>Quantity in stock</th><th>Price per item</th><th>Date submitted</th><th>Total value</th><th>Actions</th></tr></thead>
+<tbody id="rows"></tbody>
+<tfoot><tr><th colspan="4">Grand total</th><th id="grand">0.00</th><th></th></tr></tfoot>
+</table>
+</div>
+<p class="note">Demo version: entries are saved in this browser only. The full PHP version stores them in data.json on the server.</p>
+</div>
+</div>
+
+<script>
+var KEY="product-inventory-demo", items=[], editingId=null;
+function load(){try{var r=localStorage.getItem(KEY);items=r?JSON.parse(r):[];if(!Array.isArray(items))items=[];}catch(e){items=[];}}
+function save(){try{localStorage.setItem(KEY,JSON.stringify(items));}catch(e){}}
+function esc(s){return String(s).replace(/[&<>"']/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c];});}
+function money(n){return (Math.round(n*100)/100).toFixed(2);}
+function validate(n,q,p){
+  if(!n.trim())return "Product name is required.";
+  if(q===""||isNaN(q)||+q<0)return "Quantity in stock must be a non-negative number.";
+  if(p===""||isNaN(p)||+p<0)return "Price per item must be a non-negative number.";
+  return null;
+}
+function alertBox(t,type){document.getElementById("formAlert").innerHTML=t?'<div class="msg '+type+'">'+esc(t)+'</div>':"";}
+function render(){
+  var body=document.getElementById("rows"),grand=0;
+  items.sort(function(a,b){return a.created-b.created;});
+  if(!items.length){body.innerHTML='<tr><td colspan="6" class="empty">No products yet. Add one above.</td></tr>';}
+  else body.innerHTML=items.map(function(it){
+    var total=it.qty*it.price;grand+=total;
+    var date=new Date(it.created).toLocaleString();
+    if(it.id===editingId)return '<tr><td><input id="en" value="'+esc(it.name)+'" aria-label="Product name"></td>'+
+      '<td><input id="eq" type="number" min="0" step="1" value="'+it.qty+'" aria-label="Quantity"></td>'+
+      '<td><input id="ep" type="number" min="0" step="0.01" value="'+it.price+'" aria-label="Price"></td>'+
+      '<td>'+esc(date)+'</td><td>'+money(total)+'</td>'+
+      '<td class="actions"><button data-a="save" data-id="'+it.id+'">Save</button><button class="ghost" data-a="cancel">Cancel</button></td></tr>';
+    return '<tr><td>'+esc(it.name)+'</td><td>'+it.qty+'</td><td>'+money(it.price)+'</td><td>'+esc(date)+'</td><td>'+money(total)+
+      '</td><td class="actions"><button class="ghost" data-a="edit" data-id="'+it.id+'">Edit</button><button class="danger" data-a="del" data-id="'+it.id+'">Delete</button></td></tr>';
+  }).join("");
+  document.getElementById("grand").textContent=money(grand);
+}
+document.getElementById("productForm").addEventListener("submit",function(e){
+  e.preventDefault();
+  var n=document.getElementById("name").value,q=document.getElementById("qty").value,p=document.getElementById("price").value;
+  var err=validate(n,q,p);if(err){alertBox(err,"err");return;}
+  items.push({id:Date.now()+"-"+Math.random().toString(36).slice(2,7),name:n.trim(),qty:+q,price:+p,created:Date.now()});
+  save();e.target.reset();alertBox("Product added.","ok");render();
+});
+document.getElementById("rows").addEventListener("click",function(e){
+  var b=e.target.closest("button");if(!b)return;
+  var a=b.dataset.a,id=b.dataset.id;
+  if(a==="edit"){editingId=id;render();}
+  else if(a==="cancel"){editingId=null;render();}
+  else if(a==="del"){items=items.filter(function(i){return i.id!==id;});save();render();}
+  else if(a==="save"){
+    var n=document.getElementById("en").value,q=document.getElementById("eq").value,p=document.getElementById("ep").value;
+    var err=validate(n,q,p);if(err){alertBox(err,"err");return;}
+    items.forEach(function(i){if(i.id===id){i.name=n.trim();i.qty=+q;i.price=+p;}});
+    editingId=null;save();alertBox("Product updated.","ok");render();
+  }
+});
+load();render();
+</script>
+</body>
+</html>

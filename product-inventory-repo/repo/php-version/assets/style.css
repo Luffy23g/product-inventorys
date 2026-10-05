@@ -1,0 +1,19 @@
+body {
+    background-color: #f5f7fa;
+}
+
+.card-title {
+    font-weight: 600;
+}
+
+#dataTable td, #dataTable th {
+    vertical-align: middle;
+}
+
+#grandTotal {
+    text-align: right;
+}
+
+tfoot th {
+    background-color: #f1f3f5;
+}
